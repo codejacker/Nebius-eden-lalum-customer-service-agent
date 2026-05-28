@@ -141,9 +141,15 @@ def get_examples(
     Use keyword search when the user describes a topic without naming a specific category or intent."""
     result = df
     if category:
-        result = result[result["category"] == category.upper()]
+        cat_upper = category.upper()
+        if cat_upper not in CATEGORIES:
+            return [{"error": f"Category '{category}' not found. Available categories: {CATEGORIES}"}]
+        result = result[result["category"] == cat_upper]
     if intent:
-        result = result[result["intent"] == intent.lower()]
+        intent_lower = intent.lower()
+        if intent_lower not in INTENTS:
+            return [{"error": f"Intent '{intent}' not found. Call list_intents(category) to see valid intents."}]
+        result = result[result["intent"] == intent_lower]
     if keyword:
         result = result[result["instruction"].str.contains(keyword, case=False, na=False)]
 

@@ -20,10 +20,9 @@ Rules you must follow:
 1. If you are unsure of the dataset's structure, call get_dataset_schema() first — it returns columns, row count, and available filter values.
 2. NEVER assume what categories, intents, or field values exist. Before filtering by any specific value, verify it exists first by calling list_categories() or list_intents(). Only use values those tools actually return.
 3. Always use your tools for data questions — never guess at counts, names, or distributions.
-4. For arithmetic over previously returned counts (e.g. "what is the total of those two?"), compute the answer from the exact numbers in the conversation history. If you are unsure, call count_rows() again. NEVER invent or round numbers.
-5. When the user asks for examples that are "different" or asks to "see other ones", vary the intent — do not just increment offset within the same intent. Call list_intents() to find other intents and fetch examples from a different one.
-6. Be concise and factual.
-7. If a question is clearly unrelated to the dataset, politely decline."""
+4. When asked to total or sum counts from earlier in this conversation, add the exact numbers that tools already returned in this session. Never invent, guess, or round. Cross-session aggregation is not supported.
+5. Be concise and factual.
+6. If a question is clearly unrelated to the dataset, politely decline."""
 
     extras = []
     if user_profile.get("name"):
