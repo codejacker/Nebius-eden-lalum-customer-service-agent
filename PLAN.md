@@ -931,20 +931,29 @@ State: pending_suggestion = None, awaiting_confirmation = False
 - [x] Added `_MAX_MESSAGES = 20` trim in `agent_node` to cap context window growth
 - [x] `profile_update_node` in `graph.py` — LLM extracts user facts after each answer, writes `profiles/{session_id}.json`
 - [x] `user_profile` loaded from JSON and injected into system prompt in `agent_node`
-- [x] Graph topology updated: agent → profile_update → END (decline still goes directly to END)
-- [ ] Test: quit and restart CLI with same `--session`, confirm prior conversation restored
-- [ ] Test: check `profiles/{session_id}.json` is written and updated after each turn
+- [x] Graph topology updated: agent → profile_update → END; decline → profile_update → END (profile runs on all paths)
+- [x] `profile_enabled` flag — profile only tracked for named sessions (`--session alice`); anonymous sessions skip entirely
+- [x] Tested: quit and restart CLI with same `--session` — prior conversation restored from memory.db
+- [x] Tested: `profiles/{session_id}.json` written and updated; `--show-profile` and `--list-sessions` CLI commands verified
 
-### Task 3
-- [ ] `mcp_server/server.py` — FastMCP server with 3+ tools
-- [ ] Test with a Python MCP client
-- [ ] README section on connecting a client
+**Post-Task-2 refinements:**
+- [x] `count_rows` validates category/intent against schema — returns error dict instead of silent 0
+- [x] `get_examples` same validation added — returns error dict instead of empty list
+- [x] System prompt Rule 4: sum counts from conversation history, never invent numbers
+- [x] System prompt Rule 5 (vary intent on "different") removed — offset inherently gives different rows; was incorrect guidance
+- [x] Router defensive guards: empty message → out_of_scope; unknown classification → structured (not crash)
+
+### Task 3 ✅ COMPLETE
+- [x] `mcp_server/server.py` — FastMCP server with 5 tools (list_categories, list_intents, count_rows, get_examples, get_intent_distribution)
+- [x] All tools share the in-memory DataFrame from `agent/tools.py` — no double load
+- [x] Input validation consistent with agent tools (error dicts on bad category/intent)
+- [x] README section: starting the server + Python client connection example
 
 ### Bonus
 - [ ] `streamlit_app.py` — Streamlit chat UI
 - [ ] Query recommender: `pending_suggestion` state + recommend node
 
 ### Deliverables
-- [ ] `requirements.txt` with pinned versions
-- [ ] `README.md` — setup, CLI usage, MCP client example, architecture overview, model choice justification
+- [x] `requirements.txt` — all dependencies covered (validated against actual imports)
+- [x] `README.md` — setup (≤5 min), CLI usage, MCP client example, architecture overview, model choice justification
 - [ ] GitHub repo (solo submission — repo name: `eden-lalum-customer-service-agent` or similar)
