@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(anthropic-skills:pdf)",
+      "Skill(anthropic-skills:pdf:*)",
+      "WebFetch(domain:langchain-ai.github.io)",
+      "WebFetch(domain:gofastmcp.com)"
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+# Core agent framework
+langgraph>=0.2.28
+langchain>=0.3.0
+langchain-openai>=0.2.0
+langchain-core>=0.3.0
+
+# SQLite checkpointer (Task 2a — install now, use later)
+langgraph-checkpoint-sqlite>=2.0.0
+
+# LangSmith tracing + LangGraph Studio dev server
+langsmith>=0.1.0
+langgraph-cli[inmem]>=0.1.65
+
+# Dataset
+pandas>=2.0.0
+datasets>=3.0.0
+
+# MCP server (Task 3)
+fastmcp>=2.0.0
+
+# Streamlit UI (Bonus A)
+streamlit>=1.40.0
+
+# Utilities
+python-dotenv>=1.0.0
+pydantic>=2.0.0

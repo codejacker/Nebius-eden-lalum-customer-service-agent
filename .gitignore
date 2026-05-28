@@ -1,0 +1,28 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Secrets — never commit
+.env
+
+# Dataset — too large for git; regenerate with: python download_data.py
+data/bitext.csv
+
+# LangGraph SQLite memory (Task 2) — session-specific, not shared
+memory.db
+
+# Per-user profiles (Task 2b) — session-specific
+profiles/*.json
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# OS / editor noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
