@@ -18,19 +18,39 @@ def _get_system_prompt(user_profile: dict) -> str:
 
 Rules you must follow:
 1. If you are unsure of the dataset's structure, call get_dataset_schema() first — it returns columns, row count, and available filter values.
-2. NEVER assume what categories, intents, or field values exist. Before filtering by any specific value, verify it exists first by calling list_categories() or list_intents(). Only use values those tools actually return.
+2. NEVER assume what categories or intents exist. Verify a category exists before filtering by it. To count ALL rows in a category call count_rows(category=...) directly — do NOT call list_intents() first. Only call list_intents() when you need to filter by a specific intent.
 3. Always use your tools for data questions — never guess at counts, names, or distributions.
 4. When asked to total or sum counts from earlier in this conversation, add the exact numbers that tools already returned in this session. Never invent, guess, or round. Cross-session aggregation is not supported.
-5. Be concise and factual.
-6. If a question is clearly unrelated to the dataset, politely decline."""
+5. If the user states a preference or expresses a like/dislike ("I like X", "I prefer Y", "I enjoy Z"), acknowledge it conversationally. Do NOT call any tools for preference statements.
+6. If the user asks what you know or remember about them, summarize the User context section of this prompt — that is what you know. Do not claim you have no information.
+7. When the user asks what to query next (e.g. "what should I query?", "suggest something", "what else can I ask?", "what would be interesting?"):
+   a. Look at the User context (profile) — pick the most-mentioned topic from frequent_topics and factor in their stated preferences (e.g. if style=examples, suggest examples not counts).
+   b. ALWAYS name the specific profile signal driving your suggestion. Say which topic or preference you are drawing from.
+   c. Describe the suggestion in fluent plain English. NEVER write code, function names, or parameter syntax. Good: "see 5 examples from the REFUND category". Bad: "get_examples(category='REFUND', n=5)".
+   d. Use this exact pattern — two sentences: first explain the profile signal, then state the suggestion and ask:
+      "Based on your interest in [topic from profile], you might want to [plain English description]. Should I go ahead?"
+   e. If the user confirms ("yes", "sure", "go ahead", "do it") → execute with tools.
+   f. If the user refines the topic or scope ("I'd rather see examples", "make it about shipping") → acknowledge, re-suggest with the refinement in plain English, ask again.
+      NOTE: if the user makes a preference statement ("I like short answers", "I prefer concise") treat it as Rule 5 — acknowledge the preference and then re-ask if they want the suggestion run.
+   g. If the user asks a completely unrelated data question → treat as a new question, drop the suggestion.
+8. Be concise and factual.
+9. If a question is clearly unrelated to the dataset, politely decline."""
 
     extras = []
     if user_profile.get("name"):
         extras.append(f"The user's name is {user_profile['name']}.")
-    if user_profile.get("frequent_topics"):
-        extras.append(f"They frequently ask about: {', '.join(user_profile['frequent_topics'])}.")
-    if user_profile.get("notes"):
-        extras.append(f"Notes: {'; '.join(user_profile['notes'][:3])}.")
+    # Only surface topics mentioned 2+ times — single mentions are not yet "frequent"
+    # Guard against stale list format from old SQLite checkpoints
+    raw_topics = user_profile.get("frequent_topics", {})
+    if isinstance(raw_topics, dict):
+        frequent = [t for t, count in raw_topics.items() if count >= 2]
+    else:
+        frequent = list(raw_topics)  # old list format — show as-is during migration
+    if frequent:
+        extras.append(f"They frequently ask about: {', '.join(frequent)}.")
+    if user_profile.get("preferences"):
+        prefs = "; ".join(f"{k}: {v}" for k, v in list(user_profile["preferences"].items())[:3])
+        extras.append(f"Preferences: {prefs}.")
 
     if extras:
         return base + "\n\nUser context: " + " ".join(extras)
@@ -107,7 +127,7 @@ def build_graph(checkpointer=None):
         {"tools": "tools", "end": "profile_update"},
     )
     workflow.add_edge("tools", "agent")
-    workflow.add_edge("decline", "profile_update")
+    workflow.add_edge("decline", END)
     workflow.add_edge("profile_update", END)
 
     compiled = workflow.compile(checkpointer=checkpointer)

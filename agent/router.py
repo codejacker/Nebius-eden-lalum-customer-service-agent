@@ -13,8 +13,14 @@ Dataset covers these intents: {intents}
                    Also use this for follow-up requests ("show me more", "3 more", "what about X")
                    when context shows the conversation is already about the dataset.
 - "unstructured" : requires summarisation or qualitative analysis of the data.
-- "out_of_scope" : genuinely unrelated to the dataset (weather, sports, general knowledge, etc.).
-                   Do NOT classify as out_of_scope if there is prior dataset conversation context.
+                   ALSO use when the user provides personal context about themselves, including:
+                   • Their name — e.g. "my name is eden", "i'm eden", "call me eden", "name eden"
+                   • An interest in a dataset topic — e.g. "i like refunds", "i'm into shipping"
+                   • An interaction preference — e.g. "i prefer examples", "keep it concise"
+                   • Asking what the agent knows about them — e.g. "what do you remember about me?"
+- "out_of_scope" : ONLY for topics with no connection to the agent or dataset at all —
+                   weather, politics, sports, coding, general trivia.
+                   Do NOT use if the message mentions a dataset topic or is about the user themselves.
 
 Return ONLY the single classification word. Nothing else.
 

@@ -11,8 +11,8 @@ Features: multi-step tool use, persistent conversation memory (SQLite), per-user
 ### 1. Clone and enter the repo
 
 ```bash
-git clone <repo-url>
-cd customer-service-agent
+git clone https://github.com/codejacker/Nebius-eden-lalum-customer-service-agent
+cd Nebius-eden-lalum-customer-service-agent
 ```
 
 ### 2. Set up the environment
@@ -54,6 +54,12 @@ python download_data.py
 Downloads `bitext.csv` (~19 MB) to `data/`.
 
 ### 5. Run the agent
+
+```bash
+python main.py
+```
+
+Use `--session <name>` to enable persistent profile tracking across restarts:
 
 ```bash
 python main.py --session alice
@@ -153,6 +159,25 @@ asyncio.run(main())
 
 ---
 
+## Streamlit UI
+
+A browser-based chat interface that wraps the same agent and memory systems as the CLI.
+
+```bash
+source .venv/bin/activate
+streamlit run streamlit_app.py
+```
+
+Opens at `http://localhost:8501`.
+
+**Features:**
+- **Session selector** in the sidebar — pick an existing session from the dropdown to resume it, or choose "✚ New session…" to start a fresh one
+- **Reasoning steps** — tool calls and observations appear in a collapsible expander inside each assistant message bubble, live-updating as the agent works
+- **Profile panel** — for named sessions, the sidebar shows the current user profile as JSON
+- **Persistent memory** — same SQLite backend as the CLI; switching to a named session restores that conversation's full history
+
+---
+
 ## Architecture
 
 ### Graph topology
@@ -170,9 +195,10 @@ asyncio.run(main())
              │    tool calls?    no
              │        │            \
              │  [tool_node]    [profile_update_node]
-             └──────────────────────┘
-                                     │
-                                    END
+             │        │                  │
+             │        └──→ [agent_node] ─┘  ← ReAct loop repeats until no tool calls
+             │
+            END                      END
 ```
 
 - **router_node** — classifies each query as `structured`, `unstructured`, or `out_of_scope` using a small fast model and passes the last 4 messages as context so follow-up queries ("show me 3 more") are never misclassified.
