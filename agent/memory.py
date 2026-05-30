@@ -54,18 +54,17 @@ class UserProfileManager:
         """Ask the LLM to extract new user facts from the last 10 messages and merge them."""
         current = self.load()
 
-        # Only look at human messages — the profile should reflect what the USER said,
-        # not what the agent reported. AI responses mentioning categories would pollute
-        # frequent_topics with inferred rather than stated interests.
-        readable = [
-            m for m in messages[-10:]
-            if isinstance(m, HumanMessage) and m.content
-        ]
-        if not readable:
+        # Process ONLY the latest human message. profile_update_node runs once per user
+        # turn, so this counts each message EXACTLY once. Reading a sliding window of the
+        # last N messages re-counted the same message on every later turn — inflating
+        # counts (e.g. REFUND climbing on a turn that was about ACCOUNT) and defeating the
+        # ≥2 "frequent" threshold. We also look at human messages only — the profile must
+        # reflect what the USER said, not categories the agent happened to list.
+        human_msgs = [m for m in messages if isinstance(m, HumanMessage) and m.content]
+        if not human_msgs:
             return current  # nothing the user said — skip update
-        conversation_text = "\n".join(
-            f"user: {str(m.content)[:300]}" for m in readable
-        )
+        latest = human_msgs[-1]
+        conversation_text = f"user: {str(latest.content)[:300]}"
 
         from agent.tools import CATEGORIES, INTENTS
         prompt = f"""You are updating a user profile based on a conversation with a data analyst agent.
@@ -74,7 +73,7 @@ The agent answers questions about a customer service dataset.
 Current profile:
 {json.dumps(current, indent=2)}
 
-Recent conversation (user messages only):
+User's latest message:
 {conversation_text}
 
 Valid dataset categories: {CATEGORIES}
@@ -85,16 +84,23 @@ The profile has exactly three fields:
 
 1. "name" — the user's name if they explicitly mentioned it. String or null.
 
-2. "frequent_topics" — a dict mapping category name to 1 for each category the user showed
-   interest in during this conversation. Add a category when:
+2. "frequent_topics" — a dict mapping category name to 1 for each SPECIFIC category the
+   user named or asked about in THIS message. Add a category ONLY when:
    • The user expressed interest in it: "i like refunds", "i care about cancellations"
-   • The user queried about it: "show me examples from SHIPPING", "how many ORDER rows"
+   • The user queried that specific category: "show me examples from SHIPPING", "how many ORDER rows"
    • The user named it or a clear synonym: "refunds"→REFUND, "cancellations"→CANCEL,
      "payments"→PAYMENT, "shipping"→SHIPPING, "orders"→ORDER, "account"→ACCOUNT
+   DO NOT add a category when:
+   • The user asks what categories EXIST, or to LIST/enumerate them
+     ("what categories are there?", "list all categories"). That is general curiosity
+     about the schema — NOT interest in any specific category. Return {{}} for topics.
+   • A category name is not actually present in the user's own words.
    RULES:
    - Key MUST be an exact value from: {CATEGORIES}
    - Do NOT infer from unrelated words — "money" is NOT PAYMENT or INVOICE
-   - Return as a dict: {{"REFUND": 1, "SHIPPING": 1}} not a list
+   - ALWAYS return a category the user named here even if it is already in the current
+     profile — its mention count is incremented on merge (this drives the "frequent" threshold).
+   - Return as a dict: {{"REFUND": 1}} not a list
 
 3. "preferences" — a flat key-value dict capturing how the user wants to interact or what
    they are focused on. A single statement can populate BOTH frequent_topics AND preferences.
@@ -109,7 +115,9 @@ Rules:
 - Return ONLY valid JSON — no explanation, no markdown fences.
 - Only include fields that changed. Omit unchanged fields.
 - If nothing new was learned, return {{}}.
-- Do not repeat items already in the current profile."""
+- For "name" and "preferences": do NOT repeat a value already in the current profile.
+- For "frequent_topics": ALWAYS include any category the user named in this message,
+  even if it already appears in the profile — the count must be incremented."""
 
         response = llm.invoke(prompt)
 

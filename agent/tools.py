@@ -46,7 +46,7 @@ def get_dataset_schema() -> dict:
 # ---------------------------------------------------------------------------
 @tool
 def list_categories() -> list[str]:
-    """Lists all 10 available categories in the Bitext customer service dataset
+    """Lists all available categories in the Bitext customer service dataset
     (e.g. REFUND, ACCOUNT, ORDER). Use when the user asks what topics are covered."""
     return CATEGORIES
 

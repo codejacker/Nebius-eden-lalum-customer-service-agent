@@ -53,23 +53,40 @@ with st.sidebar:
     existing = _existing_sessions()
     options = existing + ["✚ New session…"]
 
+    # Remember the active session across reruns. Without this, sending the first message
+    # in a new session writes its profile file, which grows the options list and snaps the
+    # (index-driven, key-less) selectbox back to the first option. Driving the index from
+    # session_state keeps the selection put once the new session exists.
+    if "session_id" not in st.session_state:
+        st.session_state.session_id = existing[0] if existing else "default"
+
+    active = st.session_state.session_id
+    if active in existing:
+        default_index = existing.index(active)
+    else:
+        default_index = len(options) - 1  # sit on "✚ New session…"
+
     selected = st.selectbox(
         "Choose session",
         options=options,
-        index=0 if existing else 0,
+        index=default_index,
         help="Select an existing session to resume it, or create a new one.",
     )
 
     if selected == "✚ New session…":
+        # key= persists the typed name across the rerun that processes the first message,
+        # so the message is routed to the new session rather than falling back to default.
         session_input = st.text_input(
             "New session name",
             placeholder="e.g. alice",
+            key="new_session_name",
             help="Leave blank for anonymous (no profile tracking).",
         )
+        session_id = session_input.strip() or "default"
     else:
-        session_input = selected
+        session_id = selected
 
-    session_id = session_input.strip() or "default"
+    st.session_state.session_id = session_id
     profile_enabled = session_id not in ("", "default")
 
     st.caption(

@@ -9,18 +9,29 @@ Dataset covers these categories: {categories}
 Dataset covers these intents: {intents}
 
 {context}Classify the user's question as exactly one of:
-- "structured"   : has a concrete data-driven answer (counts, lists, examples, distributions).
-                   Also use this for follow-up requests ("show me more", "3 more", "what about X")
-                   when context shows the conversation is already about the dataset.
-- "unstructured" : requires summarisation or qualitative analysis of the data.
-                   ALSO use when the user provides personal context about themselves, including:
-                   • Their name — e.g. "my name is eden", "i'm eden", "call me eden", "name eden"
-                   • An interest in a dataset topic — e.g. "i like refunds", "i'm into shipping"
-                   • An interaction preference — e.g. "i prefer examples", "keep it concise"
-                   • Asking what the agent knows about them — e.g. "what do you remember about me?"
-- "out_of_scope" : ONLY for topics with no connection to the agent or dataset at all —
+- "structured"   : asks for data — counts, lists, examples, distributions, comparisons.
+                   Use this for follow-ups ("show me more", "3 more", "what about X") when
+                   context shows the conversation is already about the dataset.
+                   Use this for ANY message that contains a data ask, even if it also
+                   mentions the user's name or preferences.
+                   ALSO use this for a short CONFIRMATION ("yes", "sure", "ok", "go ahead",
+                   "do it", "yes please") WHEN the recent conversation shows the assistant
+                   just offered a query suggestion and asked for confirmation — the user is
+                   approving it, so it must now be executed with tools.
+- "unstructured" : requires qualitative analysis or summarisation of the dataset
+                   (e.g. "summarise how agents handle refunds", "describe the tone").
+                   Use this for ANY message that contains such an analysis request, even
+                   if it also mentions the user's name or preferences.
+- "personal"     : the ENTIRE message is about the user or the conversation itself —
+                   no data to look up, no analysis to do. Examples:
+                   • User states their name — "my name is eden", "call me eden"
+                   • User states a preference or interest — "i like refunds", "i prefer examples"
+                   • User asks what you know about them — "what do you remember about me?"
+                   • User asks what to query next — "what should I ask?", "suggest something"
+                   If the message also asks for any count, list, example, or distribution,
+                   do NOT use personal — use structured or unstructured instead.
+- "out_of_scope" : the topic has no connection to the agent or dataset at all —
                    weather, politics, sports, coding, general trivia.
-                   Do NOT use if the message mentions a dataset topic or is about the user themselves.
 
 Return ONLY the single classification word. Nothing else.
 
@@ -54,7 +65,7 @@ def router_node(state: AgentState) -> AgentState:
     response = router_llm.invoke(prompt)
     classification = response.content.strip().lower()
 
-    if classification not in ("structured", "unstructured", "out_of_scope"):
+    if classification not in ("structured", "unstructured", "personal", "out_of_scope"):
         classification = "structured"
 
     return {"query_type": classification}

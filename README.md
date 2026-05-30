@@ -183,28 +183,32 @@ Opens at `http://localhost:8501`.
 ### Graph topology
 
 ```
-                    START
-                      │
-               [router_node]          ← cheap model classifies the query
-              /        │        \
-        "out_of_     "struct"  "unstruct"
-         scope"         └────┬────┘
-             │               │
-       [decline_node]  [agent_node]  ← Hermes-4-70B with tools bound
+                         START
+                           │
+                    [router_node]       ← cheap model classifies the query
+              /       /        \        \
+        "personal" "struct" "unstruct" "out_of_scope"
+             │        └────┬────┘           │
+             │             │          [decline_node]
+     [personal_node]  [agent_node]          │
+      no tools bound   tools bound         END
              │          ↙        ↘
              │    tool calls?    no
              │        │            \
-             │  [tool_node]    [profile_update_node]
+             │   [tool_node]   [profile_update_node]
              │        │                  │
              │        └──→ [agent_node] ─┘  ← ReAct loop repeats until no tool calls
              │
-            END                      END
+     [profile_update_node]
+             │
+            END
 ```
 
-- **router_node** — classifies each query as `structured`, `unstructured`, or `out_of_scope` using a small fast model and passes the last 4 messages as context so follow-up queries ("show me 3 more") are never misclassified.
+- **router_node** — classifies each query as `structured`, `unstructured`, `personal`, or `out_of_scope` using a small fast model and passes the last 4 messages as context so follow-up queries ("show me 3 more") are never misclassified.
+- **personal_node** — handles name introductions, preference statements, profile summaries, and query suggestions. Uses a dedicated **instruction-tuned** model (`personal_llm` / Llama-3.3-70B-Instruct) with no tools bound, so responses are natural prose. Hermes is fine-tuned on function-calling and emits function-call syntax even when no tools are bound, so a non-tool-tuned model is used here to keep suggestions clean. The conversation history passed to this node is also stripped of any prior tool-call/tool-result messages so there is no function-call syntax left for the model to mimic.
 - **agent_node** — the ReAct core. The LLM sees the full message history + system prompt (with user profile injected). It either calls a tool or produces a final answer.
 - **tool_node** — LangGraph's built-in `ToolNode`. Executes whichever tool the agent requested and appends the result back to state.
-- **profile_update_node** — runs after every agent or decline turn (for named sessions only). Asks the LLM to extract new facts from the conversation and merges them into `profiles/{session_id}.json`.
+- **profile_update_node** — runs after every agent or personal turn (for named sessions only). Asks the LLM to extract new facts from the conversation and merges them into `profiles/{session_id}.json`.
 - **decline_node** — returns a polite refusal without calling the main LLM.
 
 Recursion limit is set once inside `build_graph()` via `.with_config({"recursion_limit": 12})` so it applies to the CLI, LangGraph Studio, and MCP equally.
@@ -214,9 +218,11 @@ Recursion limit is set once inside `build_graph()` via `.with_config({"recursion
 | System | What it stores | Where | Survives restart? |
 |--------|---------------|-------|-------------------|
 | SqliteSaver (episodic) | Full message history per session | `memory.db` | Yes |
-| UserProfileManager (profile) | Distilled facts: name, topics, notes | `profiles/<id>.json` | Yes |
+| UserProfileManager (profile) | Distilled facts: name, frequent topics (with mention counts), preferences | `profiles/<id>.json` | Yes |
 
 The episodic memory is managed automatically by LangGraph's checkpointer. The user profile is extracted by the LLM after each turn and stored separately, then injected into the system prompt on the next turn.
+
+`frequent_topics` is a `{CATEGORY: mention_count}` dict. Only the **latest** human message is inspected on each turn (the update node runs exactly once per user turn), so a category is counted exactly once per time the user actually mentions it — avoiding the double-counting that a sliding-window read would cause. A topic is only surfaced as "frequent" in the prompt once its count reaches **2**, so a single mention does not yet bias suggestions.
 
 ### Tools
 
@@ -236,14 +242,15 @@ All tools validate category and intent names against the real schema and return 
 
 ## Model Choice
 
-Two Nebius Token Factory models are used for different roles:
+Three Nebius Token Factory models are used for different roles:
 
 | Role | Model | Cost (in/out per 1M tokens) | Throughput | Rationale |
 |------|-------|--------------------------|------------|-----------|
 | **Router** | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` | $0.06 / $0.24 | 60 tok/s | Cheapest text model on Nebius. MoE architecture activates only ~3B parameters per token — fast and cost-effective for a classification task that needs no tool use. |
 | **Agent** | `NousResearch/Hermes-4-70B` | $0.13 / $0.40 | 20 tok/s | Fine-tuned specifically on tool-use and function-calling traces (the Hermes series is purpose-built for agentic tasks). Cheapest capable model for reliable multi-step tool calls on Nebius. |
+| **Personal** | `meta-llama/Llama-3.3-70B-Instruct` | $0.13 / $0.40 | 25 tok/s | Instruction-tuned (not tool-tuned) peer-grade model for the `personal_node`. Hermes is so heavily fine-tuned on function-calling that it emits function-call syntax as text even with no tools bound — leaking code into plain-prose suggestions. A general instruction-following model produces clean conversational prose instead. |
 
-**Why two models?** The router fires on every single message and only needs to output one word (`structured`, `unstructured`, or `out_of_scope`). Using the full 70B agent model for this would be wasteful. The Nemotron router costs ~4× less per token and handles classification reliably, leaving the heavier Hermes model only for turns that require reasoning and tool use.
+**Why three models?** Each turn is routed to the cheapest model that can do the job. The router fires on *every* message and only needs to output one word (`structured`, `unstructured`, `personal`, or `out_of_scope`), so it uses the tiny ~4×-cheaper Nemotron model. Turns that require reasoning and tool use go to the tool-tuned Hermes model. Personal/meta turns (name, preferences, profile summaries, suggestions) must be plain prose with no tool calls — Hermes fights this by emitting function-call syntax, so those turns go to the instruction-tuned Llama model instead.
 
 All models are accessed via [Nebius Token Factory](https://tokenfactory.nebius.com/models) using the OpenAI-compatible API endpoint at `https://api.studio.nebius.ai/v1/`.
 
@@ -267,7 +274,7 @@ Then open [smith.langchain.com](https://smith.langchain.com) and navigate to you
 .
 ├── agent/
 │   ├── graph.py       # LangGraph graph assembly
-│   ├── llms.py        # Shared LLM instances (Hermes-4-70B + Nemotron-Nano-30B)
+│   ├── llms.py        # Shared LLM instances (Hermes-4-70B agent + Nemotron-Nano-30B router + Llama-3.3-70B-Instruct personal)
 │   ├── memory.py      # SqliteSaver setup + UserProfileManager
 │   ├── router.py      # Query classification node
 │   ├── state.py       # AgentState TypedDict
