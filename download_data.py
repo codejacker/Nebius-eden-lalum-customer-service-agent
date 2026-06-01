@@ -4,6 +4,7 @@ from pathlib import Path
 
 def download():
     output = Path("data/bitext.csv")
+    output.parent.mkdir(parents=True, exist_ok=True)
 
     if output.exists():
         size_kb = output.stat().st_size // 1024

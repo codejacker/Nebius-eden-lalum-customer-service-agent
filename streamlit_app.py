@@ -13,6 +13,17 @@ from langgraph.errors import GraphRecursionError
 
 load_dotenv()
 
+# Ensure the dataset exists before importing the agent (tools.py reads the CSV at import
+# time). The CSV is gitignored, so on a fresh deploy (e.g. Streamlit Community Cloud) it is
+# downloaded once on cold start, then cached on the ephemeral disk until the container restarts.
+from pathlib import Path  # noqa: E402
+
+if not Path("data/bitext.csv").exists():
+    with st.spinner("Downloading dataset (one-time, ~20MB)…"):
+        from download_data import download
+
+        download()
+
 from agent.graph import build_graph          # noqa: E402
 from agent.memory import UserProfileManager, get_checkpointer  # noqa: E402
 
@@ -95,7 +106,7 @@ with st.sidebar:
 
     # Show profile if one exists for this session
     if profile_enabled:
-        with st.expander("User profile", expanded=False):
+        with st.expander("User profile", expanded=True):
             profile = UserProfileManager(session_id).load()
             st.json(profile)
 
@@ -216,3 +227,11 @@ if user_input:
     st.session_state.chat_history.append(
         {"role": "assistant", "content": final_answer, "steps": steps}
     )
+
+    # The profile_update_node has just written the latest facts to disk during this run,
+    # but the sidebar profile panel was rendered at the TOP of the script (before this
+    # message was processed) — so it still shows the pre-message profile. Rerun once so
+    # the sidebar reloads from disk and reflects the info from the message just sent.
+    # chat_history is in session_state, so the conversation re-renders unchanged.
+    if profile_enabled:
+        st.rerun()
